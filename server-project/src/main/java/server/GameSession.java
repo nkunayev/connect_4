@@ -1,20 +1,25 @@
-// GameSession.java
-// Final fix: fixed persistent YOUR_TURN bug and enabled chat for both players
-
 package server;
 
 import java.io.IOException;
+import java.util.logging.*;
+import common.Protocol;
+import server.UserManager.Result;
 
+/**
+ * GameSession: manages a Connect Four match between two clients,
+ * handles move logic, win/draw detection, replay, and logging.
+ */
 public class GameSession implements Runnable {
-    private final ClientHandler player1;
-    private final ClientHandler player2;
+    private static final Logger log = Logger.getLogger(GameSession.class.getName());
+    private final ClientHandler p1;
+    private final ClientHandler p2;
     private GameBoard board;
     private int currentPlayer;
     private boolean running;
 
     public GameSession(ClientHandler p1, ClientHandler p2) {
-        this.player1 = p1;
-        this.player2 = p2;
+        this.p1 = p1;
+        this.p2 = p2;
         this.board = new GameBoard();
         this.currentPlayer = 1;
         this.running = true;
@@ -22,127 +27,147 @@ public class GameSession implements Runnable {
 
     @Override
     public void run() {
-        try {
-            sendInitialMessages();
-            while (running) {
-                gameLoop();
-                if (!askReplay()) {
-                    running = false;
-                } else {
-                    board = new GameBoard();
-                    currentPlayer = 1;
+        log.info("Starting session: " + p1.getUsername() + " vs " + p2.getUsername());
+        sendGameStart();
+
+        while (running) {
+            boolean gameOver = false;
+            int winner = 0;
+            boolean draw = false;
+
+            // Game loop
+            while (!gameOver) {
+                ClientHandler current = (currentPlayer == 1) ? p1 : p2;
+                ClientHandler other   = (currentPlayer == 1) ? p2 : p1;
+
+                current.sendMessage(Protocol.YOUR_TURN);
+                other.sendMessage(Protocol.STATUS + ":Waiting for opponent...");
+
+                String msg;
+                try {
+                    msg = current.readMessage();
+                } catch (IOException e) {
+                    log.warning("Error reading move from " + current.getUsername());
+                    break;
+                }
+                if (msg == null) {
+                    log.info("Disconnect: " + current.getUsername());
+                    other.sendMessage(Protocol.GAMEOVER + ":Opponent disconnected.");
+                    winner = (currentPlayer == 1 ? 2 : 1);
+                    recordWin(winner);
+                    gameOver = true;
+                    break;
+                }
+
+                if (msg.startsWith(Protocol.MOVE + ":")) {
+                    int col;
+                    try {
+                        col = Integer.parseInt(msg.substring((Protocol.MOVE + ":").length()).trim());
+                    } catch (NumberFormatException ex) {
+                        current.sendMessage(Protocol.ERROR + ":Invalid move format");
+                        continue;
+                    }
+                    int row = board.dropToken(col, currentPlayer);
+                    if (row == -1) {
+                        current.sendMessage(Protocol.ERROR + ":Column full or invalid");
+                        continue;
+                    }
+                    log.info(current.getUsername() + " placed at col=" + col + ", row=" + row);
                     broadcastBoard();
+
+                    // Win?
+                    if (board.checkWin(currentPlayer)) {
+                        log.info("Player " + currentPlayer + " wins");
+                        broadcastMessage(Protocol.GAMEOVER + ":Player " + currentPlayer + " wins!");
+                        recordWin(currentPlayer);
+                        gameOver = true;
+                        break;
+                    }
+                    // Draw?
+                    if (board.isFull()) {
+                        log.info("Draw detected");
+                        broadcastMessage(Protocol.GAMEOVER + ":Draw!");
+                        recordDraw();
+                        gameOver = true;
+                        break;
+                    }
+
+                    // Next turn
+                    currentPlayer = (currentPlayer == 1 ? 2 : 1);
+                }
+                else if (msg.startsWith(Protocol.CHAT + ":")) {
+                    log.info("Chat from " + current.getUsername() + ": " + msg.substring((Protocol.CHAT + ":").length()));
+                    broadcastMessage(msg);
+                }
+                else {
+                    current.sendMessage(Protocol.ERROR + ":Unknown command");
                 }
             }
-        } catch (Exception e) {
-            System.err.println("[GameSession] Error: " + e.getMessage());
-            e.printStackTrace();
-        } finally {
-            cleanup();
+
+            // Replay prompt
+            if (!askReplay()) {
+                running = false;
+            } else {
+                board = new GameBoard();
+                currentPlayer = 1;
+                sendGameStart();
+            }
         }
+
+        // Cleanup
+        p1.close();
+        p2.close();
+        log.info("Session ended: " + p1.getUsername() + " vs " + p2.getUsername());
     }
 
-    private void sendInitialMessages() throws IOException {
-        player1.sendMessage("GAME_START:You are Player 1 (Red)");
-        player2.sendMessage("GAME_START:You are Player 2 (Yellow)");
+    private void sendGameStart() {
+        p1.sendMessage(Protocol.GAME_START + ":You are Player 1 (Red)");
+        p2.sendMessage(Protocol.GAME_START + ":You are Player 2 (Yellow)");
         broadcastBoard();
     }
 
-    private void gameLoop() throws IOException {
-        while (true) {
-            ClientHandler current = (currentPlayer == 1) ? player1 : player2;
-            ClientHandler waiting = (currentPlayer == 1) ? player2 : player1;
-
-            // Send both the correct turn status
-            current.sendMessage("YOUR_TURN");
-            waiting.sendMessage("STATUS:Waiting for opponent's move...");
-
-            String message = current.readMessage();
-            if (message == null) {
-                waiting.sendMessage("GAMEOVER:Opponent disconnected.");
-                running = false;
-                return;
-            }
-
-            if (message.startsWith("MOVE:")) {
-                boolean gameEnded = handleMove(message);
-                if (gameEnded) return;
-            } else if (message.startsWith("CHAT:")) {
-                processChat(current, message);
-            } else {
-                current.sendMessage("ERROR:Unrecognized command.");
-            }
-        }
-    }
-
-    private boolean handleMove(String message) {
-        try {
-            int col = Integer.parseInt(message.substring(5).trim());
-            int row = board.dropToken(col, currentPlayer);
-
-            if (row == -1) {
-                return false; // invalid move
-            }
-
-            broadcastBoard();
-            broadcastMessage("STATUS:Player " + currentPlayer + " moved.");
-
-            if (board.checkWin(currentPlayer)) {
-                broadcastMessage("GAMEOVER:Player " + currentPlayer + " wins!");
-                return true;
-            } else if (board.isFull()) {
-                broadcastMessage("GAMEOVER:Draw!");
-                return true;
-            }
-
-            currentPlayer = (currentPlayer == 1) ? 2 : 1;
-            return false;
-        } catch (NumberFormatException e) {
-            return false;
-        }
-    }
-
-    private void processChat(ClientHandler sender, String message) {
-        String msg = message.substring(5).trim();
-        String displayName = (sender == player1) ? "Player 1" : "Player 2";
-        broadcastMessage("CHAT:" + displayName + ": " + msg);
-    }
-
     private void broadcastBoard() {
-        String boardState = "BOARD:" + board.serialize();
-        player1.sendMessage(boardState);
-        player2.sendMessage(boardState);
+        String data = board.serialize();
+        String msg = Protocol.BOARD + ":" + data;
+        p1.sendMessage(msg);
+        p2.sendMessage(msg);
     }
 
     private void broadcastMessage(String msg) {
-        player1.sendMessage(msg);
-        player2.sendMessage(msg);
+        p1.sendMessage(msg);
+        p2.sendMessage(msg);
     }
 
     private boolean askReplay() {
-        broadcastMessage("END:Play again? (yes/no)");
+        p1.sendMessage(Protocol.END + ":Play again? (yes/no)");
+        p2.sendMessage(Protocol.END + ":Play again? (yes/no)");
         try {
-            player1.sendMessage("PROMPT:Replay? Type 'yes' or 'no'");
-            player2.sendMessage("PROMPT:Replay? Type 'yes' or 'no'");
-
-            String r1 = player1.readMessage();
-            String r2 = player2.readMessage();
-
-            if (r1 != null && r2 != null && r1.equalsIgnoreCase("yes") && r2.equalsIgnoreCase("yes")) {
+            String r1 = p1.readMessage();
+            String r2 = p2.readMessage();
+            log.info("Replay response: " + p1.getUsername() + "=" + r1 + ", "
+                     + p2.getUsername() + "=" + r2);
+            if ("yes".equalsIgnoreCase(r1) && "yes".equalsIgnoreCase(r2)) {
                 return true;
-            } else {
-                broadcastMessage("CHAT:One player declined replay. Session ending.");
-                return false;
             }
         } catch (IOException e) {
-            broadcastMessage("CHAT:Replay error. Ending session.");
-            return false;
+            log.warning("Error during replay dialog");
+        }
+        broadcastMessage(Protocol.STATUS + ":Session ending.");
+        return false;
+    }
+
+    private void recordWin(int player) {
+        if (player == 1) {
+            UserManager.recordResult(p1.getUsername(), Result.WIN);
+            UserManager.recordResult(p2.getUsername(), Result.LOSS);
+        } else {
+            UserManager.recordResult(p2.getUsername(), Result.WIN);
+            UserManager.recordResult(p1.getUsername(), Result.LOSS);
         }
     }
 
-    private void cleanup() {
-        player1.close();
-        player2.close();
-        System.out.println("[GameSession] Session ended.");
+    private void recordDraw() {
+        UserManager.recordResult(p1.getUsername(), Result.DRAW);
+        UserManager.recordResult(p2.getUsername(), Result.DRAW);
     }
 }

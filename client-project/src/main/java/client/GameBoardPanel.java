@@ -1,6 +1,3 @@
-// GameBoardPanel.java
-// Improved visuals and interactivity for Connect Four board rendering
-
 package client;
 
 import javax.swing.*;
@@ -8,123 +5,60 @@ import java.awt.*;
 import java.awt.event.*;
 
 /**
- * GameBoardPanel
- * Visually enhanced board renderer for Connect Four.
- * Adds clear tokens, hover column hints, and smooth user interaction.
+ * GameBoardPanel: a JLayeredPane containing:
+ *  - GameBoardCanvas on layer 0
+ *  - Seven transparent JButtons on layer 1 for column clicks
  */
-public class GameBoardPanel extends JPanel {
-    private int rows = 6, cols = 7;
-    private int[][] board;
+public class GameBoardPanel extends JLayeredPane {
+    private final GameBoardCanvas canvas;
+    private final JPanel overlay;
+    private final JButton[] columnButtons = new JButton[7];
 
-    // Customizable visual styles
-    private final Color boardColor = new Color(30, 144, 255);
-    private final Color emptyColor = Color.WHITE;
-    private final Color player1Color = new Color(220, 20, 60); // Red
-    private final Color player2Color = new Color(255, 215, 0); // Yellow
-    private final Color hoverOverlay = new Color(255, 255, 255, 80);
-
-    private final int cellSize = 90;
-    private int hoverColumn = -1;
-
-    private MoveListener moveListener;
-
-    /**
-     * Callback interface for column selection.
-     */
     public interface MoveListener {
         void onColumnSelected(int col);
     }
 
     public GameBoardPanel(MoveListener listener) {
-        this.moveListener = listener;
-        this.board = new int[rows][cols];
-        setPreferredSize(new Dimension(cols * cellSize, rows * cellSize));
-        setBackground(Color.WHITE);
+        setLayout(null);
 
-        // Column hover indicator
-        addMouseMotionListener(new MouseMotionAdapter() {
-            public void mouseMoved(MouseEvent e) {
-                int newCol = e.getX() / cellSize;
-                if (newCol != hoverColumn) {
-                    hoverColumn = newCol;
-                    repaint();
-                }
-            }
-        });
+        // Layer 0: drawing canvas
+        canvas = new GameBoardCanvas();
+        add(canvas, JLayeredPane.DEFAULT_LAYER);
 
-        addMouseListener(new MouseAdapter() {
-            public void mouseExited(MouseEvent e) {
-                hoverColumn = -1;
-                repaint();
-            }
+        // Layer 1: invisible buttons for input
+        overlay = new JPanel(null);
+        overlay.setOpaque(false);
+        for (int i = 0; i < 7; i++) {
+            JButton btn = new JButton();
+            btn.setOpaque(false);
+            btn.setContentAreaFilled(false);
+            btn.setBorderPainted(false);
+            final int col = i;
+            btn.addActionListener(e -> listener.onColumnSelected(col));
+            columnButtons[i] = btn;
+            overlay.add(btn);
+        }
+        add(overlay, JLayeredPane.PALETTE_LAYER);
 
-            public void mouseClicked(MouseEvent e) {
-                int col = e.getX() / cellSize;
-                if (moveListener != null && col >= 0 && col < cols) {
-                    moveListener.onColumnSelected(col);
+        // Responsive layout
+        addComponentListener(new ComponentAdapter() {
+            @Override
+            public void componentResized(ComponentEvent e) {
+                int w = getWidth(), h = getHeight();
+                canvas.setBounds(0, 0, w, h);
+                overlay.setBounds(0, 0, w, h);
+                int colW = w / 7;
+                for (int c = 0; c < 7; c++) {
+                    columnButtons[c].setBounds(c * colW, 0, colW, h);
                 }
             }
         });
     }
 
     /**
-     * Updates the board from serialized string.
+     * Update the board state (called by ConnectFourClient.handleMessage).
      */
     public void updateBoard(String serialized) {
-        String[] rowsStr = serialized.split(";");
-        for (int i = 0; i < rowsStr.length && i < rows; i++) {
-            String[] colsStr = rowsStr[i].split(",");
-            for (int j = 0; j < colsStr.length && j < cols; j++) {
-                try {
-                    board[i][j] = Integer.parseInt(colsStr[j]);
-                } catch (NumberFormatException e) {
-                    board[i][j] = 0;
-                }
-            }
-        }
-        repaint();
-    }
-
-    /**
-     * Render the board and tokens.
-     */
-    @Override
-    protected void paintComponent(Graphics g) {
-        super.paintComponent(g);
-        Graphics2D g2 = (Graphics2D) g;
-        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-
-        // Draw the board background
-        g2.setColor(boardColor);
-        g2.fillRect(0, 0, getWidth(), getHeight());
-
-        // Draw hover effect for column
-        if (hoverColumn >= 0 && hoverColumn < cols) {
-            g2.setColor(hoverOverlay);
-            g2.fillRect(hoverColumn * cellSize, 0, cellSize, rows * cellSize);
-        }
-
-        // Draw cells with tokens
-        for (int row = 0; row < rows; row++) {
-            for (int col = 0; col < cols; col++) {
-                int x = col * cellSize;
-                int y = row * cellSize;
-
-                Color color;
-                switch (board[row][col]) {
-                    case 1:
-                        color = player1Color;
-                        break;
-                    case 2:
-                        color = player2Color;
-                        break;
-                    default:
-                        color = emptyColor;
-                }
-
-                g2.setColor(color);
-                g2.fillOval(x + 8, y + 8, cellSize - 16, cellSize - 16);
-            }
-        }
+        canvas.setBoardState(serialized);
     }
 }

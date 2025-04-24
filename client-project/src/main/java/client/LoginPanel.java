@@ -1,78 +1,83 @@
-// LoginPanel.java
-// Modernized and stylized login screen for Connect Four client
-
 package client;
 
 import javax.swing.*;
 import java.awt.*;
 
 /**
- * LoginPanel
- * Provides a clean login interface to enter a unique username.
+ * LoginPanel: username/password UI with Login & Register buttons.
  */
 public class LoginPanel extends JPanel {
-    private JTextField usernameField;
-    private JButton loginButton;
-    private LoginListener listener;
-
-    /**
-     * Functional interface for login callback.
-     */
     public interface LoginListener {
-        void onLogin(String username);
+        void onLogin(String username, String password);
+        void onRegister(String username, String password);
     }
 
     public LoginPanel(LoginListener listener) {
-        this.listener = listener;
-        initComponents();
-    }
-
-    private void initComponents() {
         setLayout(new GridBagLayout());
         GridBagConstraints gbc = new GridBagConstraints();
-        gbc.insets = new Insets(10, 10, 10, 10);
-
-        JLabel title = new JLabel("Connect Four");
-        title.setFont(new Font("SansSerif", Font.BOLD, 28));
-        title.setHorizontalAlignment(SwingConstants.CENTER);
-        title.setForeground(new Color(30, 144, 255));
-
-        JLabel prompt = new JLabel("Enter a unique username:");
-        prompt.setFont(new Font("SansSerif", Font.PLAIN, 16));
-
-        usernameField = new JTextField(20);
-        usernameField.setFont(new Font("SansSerif", Font.PLAIN, 16));
-
-        loginButton = new JButton("Login");
-        loginButton.setFont(new Font("SansSerif", Font.BOLD, 16));
-        loginButton.setBackground(new Color(30, 144, 255));
-        loginButton.setForeground(Color.WHITE);
-
-        // Add components to the panel
+        gbc.insets = new Insets(8,8,8,8);
+        gbc.fill = GridBagConstraints.HORIZONTAL;
         gbc.gridx = 0;
         gbc.gridy = 0;
         gbc.gridwidth = 2;
+
+        // Title
+        JLabel title = new JLabel("Connect Four Login", SwingConstants.CENTER);
+        title.setFont(new Font("SansSerif", Font.BOLD, 24));
         add(title, gbc);
 
-        gbc.gridy++;
+        // Username
         gbc.gridwidth = 1;
-        add(prompt, gbc);
-
         gbc.gridy++;
-        add(usernameField, gbc);
+        add(new JLabel("Username:"), gbc);
+        JTextField userField = new JTextField(15);
+        gbc.gridx = 1;
+        add(userField, gbc);
 
+        // Password
+        gbc.gridx = 0;
         gbc.gridy++;
-        gbc.anchor = GridBagConstraints.CENTER;
-        add(loginButton, gbc);
+        add(new JLabel("Password:"), gbc);
+        JPasswordField passField = new JPasswordField(15);
+        gbc.gridx = 1;
+        add(passField, gbc);
 
-        // Event listener for login
-        loginButton.addActionListener(e -> {
-            String username = usernameField.getText().trim();
-            if (!username.isEmpty()) {
-                listener.onLogin(username);
+        // Buttons row
+        gbc.gridy++;
+        gbc.gridx = 0;
+        gbc.gridwidth = 2;
+        JPanel buttonRow = new JPanel(new FlowLayout(FlowLayout.CENTER, 10, 0));
+        JButton loginBtn    = new JButton("Login");
+        JButton registerBtn = new JButton("Register");
+
+        loginBtn.addActionListener(e -> {
+            String u = userField.getText().trim();
+            String p = new String(passField.getPassword()).trim();
+            if (u.isEmpty() || p.isEmpty()) {
+                JOptionPane.showMessageDialog(this,
+                    "Both fields are required.",
+                    "Input Error",
+                    JOptionPane.WARNING_MESSAGE);
             } else {
-                JOptionPane.showMessageDialog(this, "Username cannot be empty.", "Input Error", JOptionPane.WARNING_MESSAGE);
+                listener.onLogin(u, p);
             }
         });
+
+        registerBtn.addActionListener(e -> {
+            String u = userField.getText().trim();
+            String p = new String(passField.getPassword()).trim();
+            if (u.isEmpty() || p.isEmpty()) {
+                JOptionPane.showMessageDialog(this,
+                    "Both fields are required.",
+                    "Input Error",
+                    JOptionPane.WARNING_MESSAGE);
+            } else {
+                listener.onRegister(u, p);
+            }
+        });
+
+        buttonRow.add(loginBtn);
+        buttonRow.add(registerBtn);
+        add(buttonRow, gbc);
     }
 }
