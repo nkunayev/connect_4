@@ -82,7 +82,7 @@ public class GameSession implements Runnable {
 
                     if (board.checkWin(currentPlayer)) {
                         log.info("Player " + currentPlayer + " wins");
-                        broadcastMessage(Protocol.GAMEOVER + ":Player " + currentPlayer + " wins!");
+                        broadcastMessage(Protocol.GAMEOVER + ":" + current.getUsername() + " wins!");
                         recordWin(currentPlayer);
                         gameOver = true;
                         break;
