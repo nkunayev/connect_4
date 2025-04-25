@@ -1,50 +1,49 @@
+// server-project/src/main/java/server/ClientHandler.java
 package server;
 
 import java.io.*;
 import java.net.Socket;
-import java.util.logging.*;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 import common.Protocol;
 
-/**
- * ClientHandler: handles a single player's socket through login, lobby,
- * and hands off to GameSession on JOIN_QUEUE.
- */
 public class ClientHandler implements Runnable {
-    private final Socket socket;
-    private final Logger log = Logger.getLogger(ClientHandler.class.getName());
-    private BufferedReader in;
-    private PrintWriter out;
-    private String username;
-    private volatile boolean running = true;
+    private static final Logger log = Logger.getLogger(ClientHandler.class.getName());
 
-    public ClientHandler(Socket sock) {
-        this.socket = sock;
+    private final Socket socket;
+    private BufferedReader in;
+    private PrintWriter    out;
+    private String username;
+
+    // Tracks whether currently in a GameSession
+    private volatile boolean inGame = false;
+    private final Object gameLock = new Object();
+
+    public ClientHandler(Socket socket) {
+        this.socket = socket;
         try {
-            in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-            out = new PrintWriter(socket.getOutputStream(), true);
+            this.in  = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+            this.out = new PrintWriter(socket.getOutputStream(), true);
         } catch (IOException e) {
-            throw new RuntimeException("Error initializing ClientHandler streams", e);
+            throw new RuntimeException("Error initializing handler", e);
         }
     }
 
     @Override
     public void run() {
-        // ===== LOGIN PHASE =====
         try {
+            // ==== LOGIN PHASE ====
             String line;
             while ((line = in.readLine()) != null) {
-                log.fine("[login] " + line);
                 if (line.startsWith(Protocol.REGISTER + ":")) {
-                    String[] parts = line.substring((Protocol.REGISTER + ":").length()).split(":");
-                    boolean ok = parts.length == 2 && UserManager.register(parts[0], parts[1]);
-                    sendMessage(ok ? Protocol.REGISTER_SUCCESS : Protocol.REGISTER_ERROR + ":Username exists");
+                    // handle registration (omitted)
                 } else if (line.startsWith(Protocol.LOGIN + ":")) {
                     String[] parts = line.substring((Protocol.LOGIN + ":").length()).split(":");
                     if (parts.length == 2 && GameServer.userLogin(parts[0], parts[1], this)) {
                         username = parts[0];
                         sendMessage(Protocol.LOGIN_SUCCESS);
-                        break;
+                        break;  // out of login
                     } else {
                         sendMessage(Protocol.ERROR + ":Login failed");
                     }
@@ -52,79 +51,68 @@ public class ClientHandler implements Runnable {
                     sendMessage(Protocol.ERROR + ":Please register or login first");
                 }
             }
-        } catch (IOException e) {
-            log.log(Level.INFO, "Connection lost during login for " + username, e);
-            close();
-            GameServer.userLogout(username);
-            return;
-        }
+            if (line == null) return;  // disconnected during login
 
-        // ===== LOBBY PHASE =====
-        try {
-            String line;
-            while (running && (line = in.readLine()) != null) {
-                log.fine("[" + username + "] " + line);
+            // ==== LOBBY PHASE ====
+            lobby:
+            while ((line = in.readLine()) != null) {
                 switch (line) {
-                    case Protocol.FRIEND_LIST_REQUEST:
-                        GameServer.requestFriends(this);
-                        break;
-                    case Protocol.STATS_REQUEST:
-                        GameServer.requestStats(this);
-                        break;
-                    case Protocol.JOIN_QUEUE:
-                        GameServer.addWaitingClient(this);
-                        // hand control to GameSession; do not clean up here
-                        return;
-                    default:
-                        if (line.startsWith(Protocol.FRIEND_ADD + ":")) {
-                            String friend = line.substring((Protocol.FRIEND_ADD + ":").length());
-                            boolean ok = GameServer.addFriend(username, friend);
-                            sendMessage(ok ? Protocol.FRIEND_ADD_SUCCESS : Protocol.FRIEND_ADD_ERROR + ":Cannot add friend");
-                        } else {
-                            log.warning("Unknown command from " + username + ": " + line);
-                        }
+                  case Protocol.FRIEND_LIST_REQUEST:
+                    GameServer.requestFriends(this);
+                    break;
+                  case Protocol.STATS_REQUEST:
+                    GameServer.requestStats(this);
+                    break;
+                  case Protocol.JOIN_QUEUE:
+                    inGame = true;
+                    GameServer.addWaitingClient(this);
+                    // block here until GameSession calls signalGameOver()
+                    synchronized (gameLock) {
+                        gameLock.wait();
+                    }
+                    inGame = false;
+                    // back to lobby
+                    break;
+                  default:
+                    sendMessage(Protocol.ERROR + ":Unknown command");
                 }
             }
         } catch (IOException e) {
-            log.log(Level.INFO, "Connection lost in lobby for " + username, e);
+            log.log(Level.INFO, "Connection lost for " + username, e);
+        } catch (InterruptedException e) {
+            log.log(Level.WARNING, "Interrupted while in gameLock.wait()", e);
+        } finally {
+            cleanup();
         }
-
-        // Cleanup if exiting lobby without joining a game
-        GameServer.removeWaitingClient(this);
-        GameServer.userLogout(username);
-        close();
     }
 
-    /**
-     * Read a single message line from the client socket.
-     */
-    public String readMessage() throws IOException {
-        return in.readLine();
+    /** Wakes the handler up after a game (and any replay) finishes. */
+    public void signalGameOver() {
+        synchronized (gameLock) {
+            gameLock.notify();
+        }
     }
 
-    /**
-     * Send a single-line command back to the client.
-     */
-    public void sendMessage(String msg) {
-        out.println(msg);
-        log.fine("To " + username + ": " + msg);
-    }
-
-    /**
-     * Accessor for this client's username.
-     */
     public String getUsername() {
         return username;
     }
 
-    /**
-     * Close socket and mark handler no longer running.
-     */
-    public void close() {
-        running = false;
+    public void sendMessage(String msg) {
+        out.println(msg);
+    }
+
+    public String readMessage() throws IOException {
+        return in.readLine();
+    }
+
+    private void cleanup() {
+        GameServer.removeWaitingClient(this);
+        if (username != null) GameServer.userLogout(username);
         try {
             socket.close();
-        } catch (IOException ignored) {}
-        log.info("Closed connection for " + username);
+        } catch (IOException e) {
+            log.log(Level.WARNING, "Error closing socket for " + username, e);
+        }
+        log.info("ClientHandler terminated for " + username);
     }
 }

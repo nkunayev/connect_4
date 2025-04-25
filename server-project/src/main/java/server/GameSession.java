@@ -3,12 +3,14 @@ package server;
 import java.io.IOException;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+
 import common.Protocol;
 import server.UserManager.Result;
 
 /**
  * GameSession: manages a Connect Four match between two clients,
- * handles move logic, win/draw detection, replay, and logging.
+ * handles move logic, win/draw detection, replay, and notifying
+ * the handlers to return to the lobby.
  */
 public class GameSession implements Runnable {
     private static final Logger log = Logger.getLogger(GameSession.class.getName());
@@ -31,10 +33,11 @@ public class GameSession implements Runnable {
         log.info("Starting session: " + p1.getUsername() + " vs " + p2.getUsername());
         sendGameStart();
 
+        // Outer loop handles rematches
         while (running) {
             boolean gameOver = false;
 
-            // Main game loop
+            // Play one game
             while (!gameOver && running) {
                 ClientHandler current = (currentPlayer == 1) ? p1 : p2;
                 ClientHandler other   = (currentPlayer == 1) ? p2 : p1;
@@ -65,19 +68,13 @@ public class GameSession implements Runnable {
                 }
 
                 if (msg.startsWith(Protocol.MOVE + ":")) {
-                    int col;
-                    try {
-                        col = Integer.parseInt(msg.substring((Protocol.MOVE + ":").length()).trim());
-                    } catch (NumberFormatException ex) {
-                        current.sendMessage(Protocol.ERROR + ":Invalid move format");
-                        continue;
-                    }
+                    int col = Integer.parseInt(msg.substring((Protocol.MOVE + ":").length()).trim());
                     int row = board.dropToken(col, currentPlayer);
-                    if (row == -1) {
-                        current.sendMessage(Protocol.ERROR + ":Column full or invalid");
+                    if (row < 0) {
+                        current.sendMessage(Protocol.ERROR + ":Invalid move");
                         continue;
                     }
-                    log.info(current.getUsername() + " placed at col=" + col + ", row=" + row);
+                    log.info(current.getUsername() + " dropped at col=" + col + ", row=" + row);
                     broadcastBoard();
 
                     if (board.checkWin(currentPlayer)) {
@@ -88,7 +85,7 @@ public class GameSession implements Runnable {
                         break;
                     }
                     if (board.isFull()) {
-                        log.info("Draw detected");
+                        log.info("Board full: draw");
                         broadcastMessage(Protocol.GAMEOVER + ":Draw!");
                         recordDraw();
                         gameOver = true;
@@ -96,83 +93,69 @@ public class GameSession implements Runnable {
                     }
 
                     currentPlayer = (currentPlayer == 1 ? 2 : 1);
-                } else if (msg.startsWith(Protocol.CHAT + ":")) {
-                    log.info("Chat from " + current.getUsername() + ": " + msg.substring((Protocol.CHAT + ":").length()));
+                }
+                else if (msg.startsWith(Protocol.CHAT + ":")) {
                     broadcastMessage(msg);
-                } else {
+                }
+                else {
                     current.sendMessage(Protocol.ERROR + ":Unknown command");
                 }
             }
 
-            if (!running) break;
-
-            // Sequential replay prompt: ask P1 first, then P2
+            // Ask for a rematch; if either says no, end the session
             if (!askReplay()) {
-                break;
+                // **NEW**: inform clients that the session is ending
+                broadcastMessage(Protocol.STATUS + ":Session ending.");
+                running = false;
             } else {
+                // reset and start a new game
                 board = new GameBoard();
                 currentPlayer = 1;
                 sendGameStart();
             }
         }
 
-        p1.close();
-        p2.close();
         log.info("Session ended: " + p1.getUsername() + " vs " + p2.getUsername());
+        // Wake both handlers so they return to the lobby loop
+        p1.signalGameOver();
+        p2.signalGameOver();
     }
 
+    /** Notify both clients of a new game start. */
     private void sendGameStart() {
-        log.info("Sending GAME_START and initial board");
+        log.info("Sending GAME_START + initial board");
         p1.sendMessage(Protocol.GAME_START + ":You are Player 1 (Red)");
         p2.sendMessage(Protocol.GAME_START + ":You are Player 2 (Yellow)");
         broadcastBoard();
     }
 
+    /** Send the current board to both clients. */
     private void broadcastBoard() {
-        String msg = Protocol.BOARD + ":" + board.serialize();
+        String data = board.serialize();
+        String msg  = Protocol.BOARD + ":" + data;
         p1.sendMessage(msg);
         p2.sendMessage(msg);
     }
 
+    /** Send an arbitrary message to both clients. */
     private void broadcastMessage(String msg) {
         p1.sendMessage(msg);
         p2.sendMessage(msg);
     }
 
-    /**
-     * Ask for replay sequentially: prompt p1 first, then p2.
-     */
+    /** Prompt both players for a rematch; returns true only if both say “yes.” */
     private boolean askReplay() {
-        log.info("Prompting P1 for replay");
         p1.sendMessage(Protocol.END + ":Play again? (yes/no)");
-        String r1;
-        try {
-            r1 = p1.readMessage();
-            log.info("Replay reply from " + p1.getUsername() + ": " + r1);
-        } catch (IOException e) {
-            log.log(Level.WARNING, "Error reading replay reply from " + p1.getUsername(), e);
-            return false;
-        }
-        if (!"yes".equalsIgnoreCase(r1)) {
-            broadcastMessage(Protocol.STATUS + ":Session ending.");
-            return false;
-        }
-        log.info("Prompting P2 for replay");
         p2.sendMessage(Protocol.END + ":Play again? (yes/no)");
-        String r2;
         try {
-            r2 = p2.readMessage();
-            log.info("Replay reply from " + p2.getUsername() + ": " + r2);
+            String r1 = p1.readMessage();
+            String r2 = p2.readMessage();
+            log.info("Replay: " + p1.getUsername() + "=" + r1 + ", " + p2.getUsername() + "=" + r2);
+            return "yes".equalsIgnoreCase(r1) && "yes".equalsIgnoreCase(r2);
         } catch (IOException e) {
-            log.log(Level.WARNING, "Error reading replay reply from " + p2.getUsername(), e);
+            log.log(Level.WARNING, "Error during replay dialog", e);
             return false;
         }
-        if (!"yes".equalsIgnoreCase(r2)) {
-            broadcastMessage(Protocol.STATUS + ":Session ending.");
-            return false;
-        }
-        log.info("Both players agreed to replay");
-        return true;
     }
 
     private void recordWin(int player) {
