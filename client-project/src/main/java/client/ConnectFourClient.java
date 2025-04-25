@@ -1,3 +1,5 @@
+// ConnectFourClient.java
+
 package client;
 
 import javax.swing.*;
@@ -65,6 +67,7 @@ public class ConnectFourClient {
                             if (Protocol.LOGIN_SUCCESS.equals(resp)) {
                                 cardLayout.show(mainPanel, "home");
                                 startNetworkListener();
+                                // start global chat
                                 chatClient = new ChatClient("127.0.0.1", 5555, msg -> SwingUtilities.invokeLater(() -> {
                                     switch (msg.type) {
                                         case NEWUSER:
@@ -155,7 +158,11 @@ public class ConnectFourClient {
 
         // --- Game Screen ---
         JPanel gamePanel = new JPanel(new BorderLayout(10,10));
-        boardPanel = new GameBoardPanel(col -> network.sendMessage(Protocol.MOVE + ":" + col));
+        boardPanel = new GameBoardPanel(col -> {
+            // log right before we send the move:
+            System.out.println("CLIENT → MOVE:" + col);
+            network.sendMessage(Protocol.MOVE + ":" + col);
+        });
         boardPanel.setInteractive(false);
         gamePanel.add(boardPanel, BorderLayout.CENTER);
 
@@ -171,12 +178,12 @@ public class ConnectFourClient {
             }
         });
 
-        JPanel chatContainer = new JPanel(new BorderLayout(5,5));
-        chatContainer.setBorder(BorderFactory.createTitledBorder("Game Chat"));
-        chatContainer.add(new JScrollPane(chatArea), BorderLayout.CENTER);
-        chatContainer.add(chatField, BorderLayout.SOUTH);
-        chatContainer.setPreferredSize(new Dimension(250,0));
-        gamePanel.add(chatContainer, BorderLayout.EAST);
+        JPanel chatPanel = new JPanel(new BorderLayout(5,5));
+        chatPanel.setBorder(BorderFactory.createTitledBorder("Game Chat"));
+        chatPanel.add(new JScrollPane(chatArea), BorderLayout.CENTER);
+        chatPanel.add(chatField, BorderLayout.SOUTH);
+        chatPanel.setPreferredSize(new Dimension(250,0));
+        gamePanel.add(chatPanel, BorderLayout.EAST);
 
         statusLabel = new JLabel("", SwingConstants.CENTER);
         statusLabel.setFont(new Font("SansSerif", Font.BOLD, 16));
@@ -198,61 +205,47 @@ public class ConnectFourClient {
                     SwingUtilities.invokeLater(() -> handleMessage(m));
                 }
             } catch (Exception e) {
-                // ignore
-            } finally {
-                SwingUtilities.invokeLater(() -> {
-                    cardLayout.show(mainPanel, "home");
-                    boardPanel.setInteractive(false);
-                    chatField.setEnabled(false);
-                });
+                showError("Disconnected from server.");
             }
         }).start();
     }
 
     private void handleMessage(String msg) {
+        System.out.println("CLIENT ← " + msg);
+
         if (msg.startsWith(Protocol.BOARD + ":")) {
             boardPanel.updateBoard(msg.substring((Protocol.BOARD + ":").length()));
-            if ("Your turn! Click a column.".equals(statusLabel.getText())) {
-                boardPanel.setInteractive(true);
-            }
         }
         else if (msg.equals(Protocol.YOUR_TURN)) {
             statusLabel.setText("Your turn! Click a column.");
             boardPanel.setInteractive(true);
-            chatField.setEnabled(true);
         }
         else if (msg.startsWith(Protocol.STATUS + ":")) {
             statusLabel.setText(msg.substring((Protocol.STATUS + ":").length()));
             boardPanel.setInteractive(false);
-            chatField.setEnabled(false);
         }
         else if (msg.startsWith(Protocol.GAME_START + ":")) {
             statusLabel.setText(msg.substring((Protocol.GAME_START + ":").length()));
-            boardPanel.setInteractive(false);
-            chatField.setEnabled(true);
+            boardPanel.setInteractive(true);
         }
         else if (msg.startsWith(Protocol.GAMEOVER + ":")) {
             String r = msg.substring((Protocol.GAMEOVER + ":").length());
             statusLabel.setText(r);
             JOptionPane.showMessageDialog(frame, r, "Game Over", JOptionPane.INFORMATION_MESSAGE);
             boardPanel.setInteractive(false);
-            chatField.setEnabled(false);
         }
         else if (msg.startsWith(Protocol.END + ":")) {
             String prompt = msg.substring((Protocol.END + ":").length());
-            int choice = JOptionPane.showConfirmDialog(
-                frame, prompt, "Play Again?", JOptionPane.YES_NO_OPTION);
-            network.sendMessage(choice == JOptionPane.YES_OPTION ? "yes" : "no");
-            if (choice != JOptionPane.YES_OPTION) {
-                cardLayout.show(mainPanel, "home");
-                boardPanel.setInteractive(false);
-                chatField.setEnabled(false);
-            }
+            int choice = JOptionPane.showConfirmDialog(frame, prompt,
+                                                    "Play Again?",
+                                                    JOptionPane.YES_NO_OPTION);
+            String response = (choice == JOptionPane.YES_OPTION ? "yes" : "no");
+            System.out.println("CLIENT → " + response);
+            network.sendMessage(response);
         }
         else if (msg.equals(Protocol.QUEUE_JOINED)) {
             statusLabel.setText("Waiting for opponent...");
             boardPanel.setInteractive(false);
-            chatField.setEnabled(false);
         }
         else if (msg.startsWith(Protocol.FRIEND_LIST_RESPONSE + ":")) {
             friendsPanel.updateFriendsList(parseKeyBoolList(
@@ -267,13 +260,13 @@ public class ConnectFourClient {
         else if (msg.startsWith(Protocol.STATS_RESPONSE + ":")) {
             String[] p = msg.substring((Protocol.STATS_RESPONSE + ":").length()).split(",");
             statsPanel.updateStats(
-                Integer.parseInt(p[0]),
-                Integer.parseInt(p[1]),
-                Integer.parseInt(p[2]));
+                Integer.parseInt(p[0]), Integer.parseInt(p[1]), Integer.parseInt(p[2]));
         }
         else if (msg.startsWith(Protocol.ERROR + ":")) {
             showError(msg.substring((Protocol.ERROR + ":").length()));
         }
+
+        chatField.setEnabled(true);
     }
 
     private void showError(String message) {
@@ -285,7 +278,8 @@ public class ConnectFourClient {
     private Map<String, Boolean> parseKeyBoolList(String d) {
         Map<String, Boolean> m = new HashMap<>();
         for (String e: d.split(";")) {
-            String[] kv = e.split(","); if (kv.length == 2) m.put(kv[0], "on".equals(kv[1]));
+            String[] kv = e.split(",");
+            if (kv.length==2) m.put(kv[0], "on".equals(kv[1]));
         }
         return m;
     }

@@ -1,7 +1,8 @@
 package server;
 
 import java.io.IOException;
-import java.util.logging.*;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import common.Protocol;
 import server.UserManager.Result;
 
@@ -32,30 +33,34 @@ public class GameSession implements Runnable {
 
         while (running) {
             boolean gameOver = false;
-            int winner = 0;
-            boolean draw = false;
 
-            // Game loop
-            while (!gameOver) {
+            // Main game loop
+            while (!gameOver && running) {
                 ClientHandler current = (currentPlayer == 1) ? p1 : p2;
                 ClientHandler other   = (currentPlayer == 1) ? p2 : p1;
 
                 current.sendMessage(Protocol.YOUR_TURN);
                 other.sendMessage(Protocol.STATUS + ":Waiting for opponent...");
+                log.info("Waiting for move from " + current.getUsername());
 
                 String msg;
                 try {
                     msg = current.readMessage();
+                    log.info("Received from " + current.getUsername() + ": " + msg);
                 } catch (IOException e) {
-                    log.warning("Error reading move from " + current.getUsername());
+                    log.log(Level.WARNING, "Error reading move from " + current.getUsername(), e);
+                    other.sendMessage(Protocol.GAMEOVER + ":Opponent disconnected.");
+                    recordWin(currentPlayer == 1 ? 2 : 1);
+                    gameOver = true;
+                    running  = false;
                     break;
                 }
                 if (msg == null) {
                     log.info("Disconnect: " + current.getUsername());
                     other.sendMessage(Protocol.GAMEOVER + ":Opponent disconnected.");
-                    winner = (currentPlayer == 1 ? 2 : 1);
-                    recordWin(winner);
+                    recordWin(currentPlayer == 1 ? 2 : 1);
                     gameOver = true;
+                    running  = false;
                     break;
                 }
 
@@ -75,7 +80,6 @@ public class GameSession implements Runnable {
                     log.info(current.getUsername() + " placed at col=" + col + ", row=" + row);
                     broadcastBoard();
 
-                    // Win?
                     if (board.checkWin(currentPlayer)) {
                         log.info("Player " + currentPlayer + " wins");
                         broadcastMessage(Protocol.GAMEOVER + ":Player " + currentPlayer + " wins!");
@@ -83,7 +87,6 @@ public class GameSession implements Runnable {
                         gameOver = true;
                         break;
                     }
-                    // Draw?
                     if (board.isFull()) {
                         log.info("Draw detected");
                         broadcastMessage(Protocol.GAMEOVER + ":Draw!");
@@ -92,21 +95,20 @@ public class GameSession implements Runnable {
                         break;
                     }
 
-                    // Next turn
                     currentPlayer = (currentPlayer == 1 ? 2 : 1);
-                }
-                else if (msg.startsWith(Protocol.CHAT + ":")) {
+                } else if (msg.startsWith(Protocol.CHAT + ":")) {
                     log.info("Chat from " + current.getUsername() + ": " + msg.substring((Protocol.CHAT + ":").length()));
                     broadcastMessage(msg);
-                }
-                else {
+                } else {
                     current.sendMessage(Protocol.ERROR + ":Unknown command");
                 }
             }
 
-            // Replay prompt
+            if (!running) break;
+
+            // Sequential replay prompt: ask P1 first, then P2
             if (!askReplay()) {
-                running = false;
+                break;
             } else {
                 board = new GameBoard();
                 currentPlayer = 1;
@@ -114,21 +116,20 @@ public class GameSession implements Runnable {
             }
         }
 
-        // Cleanup
         p1.close();
         p2.close();
         log.info("Session ended: " + p1.getUsername() + " vs " + p2.getUsername());
     }
 
     private void sendGameStart() {
+        log.info("Sending GAME_START and initial board");
         p1.sendMessage(Protocol.GAME_START + ":You are Player 1 (Red)");
         p2.sendMessage(Protocol.GAME_START + ":You are Player 2 (Yellow)");
         broadcastBoard();
     }
 
     private void broadcastBoard() {
-        String data = board.serialize();
-        String msg = Protocol.BOARD + ":" + data;
+        String msg = Protocol.BOARD + ":" + board.serialize();
         p1.sendMessage(msg);
         p2.sendMessage(msg);
     }
@@ -138,22 +139,40 @@ public class GameSession implements Runnable {
         p2.sendMessage(msg);
     }
 
+    /**
+     * Ask for replay sequentially: prompt p1 first, then p2.
+     */
     private boolean askReplay() {
+        log.info("Prompting P1 for replay");
         p1.sendMessage(Protocol.END + ":Play again? (yes/no)");
-        p2.sendMessage(Protocol.END + ":Play again? (yes/no)");
+        String r1;
         try {
-            String r1 = p1.readMessage();
-            String r2 = p2.readMessage();
-            log.info("Replay response: " + p1.getUsername() + "=" + r1 + ", "
-                     + p2.getUsername() + "=" + r2);
-            if ("yes".equalsIgnoreCase(r1) && "yes".equalsIgnoreCase(r2)) {
-                return true;
-            }
+            r1 = p1.readMessage();
+            log.info("Replay reply from " + p1.getUsername() + ": " + r1);
         } catch (IOException e) {
-            log.warning("Error during replay dialog");
+            log.log(Level.WARNING, "Error reading replay reply from " + p1.getUsername(), e);
+            return false;
         }
-        broadcastMessage(Protocol.STATUS + ":Session ending.");
-        return false;
+        if (!"yes".equalsIgnoreCase(r1)) {
+            broadcastMessage(Protocol.STATUS + ":Session ending.");
+            return false;
+        }
+        log.info("Prompting P2 for replay");
+        p2.sendMessage(Protocol.END + ":Play again? (yes/no)");
+        String r2;
+        try {
+            r2 = p2.readMessage();
+            log.info("Replay reply from " + p2.getUsername() + ": " + r2);
+        } catch (IOException e) {
+            log.log(Level.WARNING, "Error reading replay reply from " + p2.getUsername(), e);
+            return false;
+        }
+        if (!"yes".equalsIgnoreCase(r2)) {
+            broadcastMessage(Protocol.STATUS + ":Session ending.");
+            return false;
+        }
+        log.info("Both players agreed to replay");
+        return true;
     }
 
     private void recordWin(int player) {
