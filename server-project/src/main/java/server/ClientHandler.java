@@ -1,8 +1,8 @@
-// server-project/src/main/java/server/ClientHandler.java
 package server;
 
 import java.io.*;
 import java.net.Socket;
+import java.net.SocketException;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -11,23 +11,19 @@ import common.Protocol;
 public class ClientHandler implements Runnable {
     private static final Logger log = Logger.getLogger(ClientHandler.class.getName());
 
-    private final Socket socket;
-    private BufferedReader in;
-    private PrintWriter    out;
-    private String username;
+    private final Socket      socket;
+    private final BufferedReader in;
+    private final PrintWriter    out;
+    private String               username;
 
-    // Tracks whether currently in a GameSession
+    // Used to block while in a game and resume back in the lobby
     private volatile boolean inGame = false;
-    private final Object gameLock = new Object();
+    private final Object     gameLock = new Object();
 
-    public ClientHandler(Socket socket) {
+    public ClientHandler(Socket socket) throws IOException {
         this.socket = socket;
-        try {
-            this.in  = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-            this.out = new PrintWriter(socket.getOutputStream(), true);
-        } catch (IOException e) {
-            throw new RuntimeException("Error initializing handler", e);
-        }
+        this.in     = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+        this.out    = new PrintWriter(socket.getOutputStream(), true);
     }
 
     @Override
@@ -37,21 +33,23 @@ public class ClientHandler implements Runnable {
             String line;
             while ((line = in.readLine()) != null) {
                 if (line.startsWith(Protocol.REGISTER + ":")) {
-                    // handle registration (omitted)
-                } else if (line.startsWith(Protocol.LOGIN + ":")) {
+                    // … registration logic …
+                }
+                else if (line.startsWith(Protocol.LOGIN + ":")) {
                     String[] parts = line.substring((Protocol.LOGIN + ":").length()).split(":");
                     if (parts.length == 2 && GameServer.userLogin(parts[0], parts[1], this)) {
                         username = parts[0];
                         sendMessage(Protocol.LOGIN_SUCCESS);
-                        break;  // out of login
+                        break;
                     } else {
                         sendMessage(Protocol.ERROR + ":Login failed");
                     }
-                } else {
+                }
+                else {
                     sendMessage(Protocol.ERROR + ":Please register or login first");
                 }
             }
-            if (line == null) return;  // disconnected during login
+            if (line == null) return;  // disconnected pre-login
 
             // ==== LOBBY PHASE ====
             lobby:
@@ -66,12 +64,10 @@ public class ClientHandler implements Runnable {
                   case Protocol.JOIN_QUEUE:
                     inGame = true;
                     GameServer.addWaitingClient(this);
-                    // block here until GameSession calls signalGameOver()
                     synchronized (gameLock) {
                         gameLock.wait();
                     }
                     inGame = false;
-                    // back to lobby
                     break;
                   default:
                     sendMessage(Protocol.ERROR + ":Unknown command");
@@ -80,29 +76,45 @@ public class ClientHandler implements Runnable {
         } catch (IOException e) {
             log.log(Level.INFO, "Connection lost for " + username, e);
         } catch (InterruptedException e) {
-            log.log(Level.WARNING, "Interrupted while in gameLock.wait()", e);
+            log.log(Level.WARNING, "Interrupted while waiting for game to finish", e);
         } finally {
             cleanup();
         }
     }
 
-    /** Wakes the handler up after a game (and any replay) finishes. */
+    /** Wake this handler up after a GameSession ends. */
     public void signalGameOver() {
         synchronized (gameLock) {
             gameLock.notify();
         }
     }
 
-    public String getUsername() {
-        return username;
+    /** Non-blocking check for any pending data on the socket. */
+    public boolean hasData() {
+        try {
+            return in.ready();
+        } catch (IOException e) {
+            return false;
+        }
     }
 
+    /** Set a SO_TIMEOUT on the socket to allow timed reads. */
+    public void setReadTimeout(int millis) throws SocketException {
+        socket.setSoTimeout(millis);
+    }
+
+    /** Send one line to the client. */
     public void sendMessage(String msg) {
         out.println(msg);
     }
 
+    /** Read one line (blocking or timeout) from the client. */
     public String readMessage() throws IOException {
         return in.readLine();
+    }
+
+    public String getUsername() {
+        return username;
     }
 
     private void cleanup() {

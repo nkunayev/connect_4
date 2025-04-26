@@ -7,27 +7,23 @@ import java.util.HashMap;
 import java.util.Map;
 
 import common.Protocol;
-import common.chat.Message;
-import common.chat.MessageType;
-import client.chat.ChatClient;
 
 public class ConnectFourClient {
     private static final int ROWS = 6, COLS = 7;
 
-    private JFrame        frame;
-    private CardLayout    cardLayout;
-    private JPanel        mainPanel;
-    private LoginPanel    loginPanel;
-    private HomePanel     homePanel;
-    private FriendsPanel  friendsPanel;
-    private StatsPanel    statsPanel;
+    private JFrame       frame;
+    private CardLayout   cardLayout;
+    private JPanel       mainPanel;
+    private LoginPanel   loginPanel;
+    private HomePanel    homePanel;
+    private FriendsPanel friendsPanel;
+    private StatsPanel   statsPanel;
     private GameBoardPanel boardPanel;
-    private JTextPane     chatArea;
-    private JTextField    chatField;
-    private JLabel        statusLabel;
+    private JTextPane    chatArea;
+    private JTextField   chatField;
+    private JLabel       statusLabel;
     private NetworkHandler network;
-    private ChatClient     chatClient;
-    private String         username;
+    private String       username;
 
     public ConnectFourClient(String serverIP, int port) {
         try {
@@ -64,7 +60,6 @@ public class ConnectFourClient {
                             if (Protocol.LOGIN_SUCCESS.equals(resp)) {
                                 cardLayout.show(mainPanel, "home");
                                 startNetworkListener();
-                                startChatClient();
                             } else {
                                 JOptionPane.showMessageDialog(frame, resp,
                                     "Login Error", JOptionPane.ERROR_MESSAGE);
@@ -105,7 +100,6 @@ public class ConnectFourClient {
         // --- Home Screen ---
         homePanel = new HomePanel(new HomePanel.HomeListener() {
             @Override public void onPlayOnline() {
-                // reset UI
                 boardPanel.updateBoard(emptyBoardString());
                 chatArea.setText("");
                 statusLabel.setText("Waiting for opponent...");
@@ -161,7 +155,7 @@ public class ConnectFourClient {
         chatField.addActionListener(e -> {
             String txt = chatField.getText().trim();
             if (!txt.isEmpty()) {
-                chatClient.send(new Message(username + ": " + txt));
+                network.sendMessage(Protocol.CHAT + ":" + username + ": " + txt);
                 chatField.setText("");
             }
         });
@@ -197,25 +191,6 @@ public class ConnectFourClient {
         return sb.toString();
     }
 
-    private void startChatClient() {
-        chatClient = new ChatClient("127.0.0.1", 5555, msg ->
-            SwingUtilities.invokeLater(() -> {
-                StyledDocument doc = chatArea.getStyledDocument();
-                Style style = doc.getStyle(StyleContext.DEFAULT_STYLE);
-                try {
-                    if (msg.type == MessageType.TEXT) {
-                        doc.insertString(doc.getLength(), msg.message + "\n", style);
-                    } else {
-                        doc.insertString(doc.getLength(), "[System] " + msg.message + "\n", style);
-                    }
-                } catch (BadLocationException ex) {
-                    ex.printStackTrace();
-                }
-            })
-        );
-        chatClient.start();
-    }
-
     private void startNetworkListener() {
         new Thread(() -> {
             try {
@@ -225,7 +200,7 @@ public class ConnectFourClient {
                     SwingUtilities.invokeLater(() -> handleMessage(msg));
                 }
             } catch (Exception e) {
-                // only on real disconnect
+                showError("Disconnected from server.");
             }
         }).start();
     }
@@ -253,40 +228,56 @@ public class ConnectFourClient {
             }
         }
         else if (msg.startsWith(Protocol.GAME_START + ":")) {
-            String t = msg.substring((Protocol.GAME_START + ":").length());
-            statusLabel.setText(t);
+            statusLabel.setText(msg.substring((Protocol.GAME_START + ":").length()));
             boardPanel.setInteractive(true);
         }
         else if (msg.startsWith(Protocol.GAMEOVER + ":")) {
             String r = msg.substring((Protocol.GAMEOVER + ":").length());
             statusLabel.setText(r);
             boardPanel.setInteractive(false);
-            // ... your win/lose‐in‐chat code ...
+
+            // colored win/lose
+            StyledDocument d = chatArea.getStyledDocument();
+            Style win  = d.getStyle("WIN");
+            if (win == null) { win = d.addStyle("WIN", null); StyleConstants.setForeground(win, Color.GREEN.darker()); }
+            Style lose = d.getStyle("LOSE");
+            if (lose == null){ lose = d.addStyle("LOSE", null); StyleConstants.setForeground(lose, Color.RED.darker()); }
+            try {
+                String winner = r.split(" ")[0];
+                if (winner.equals(username)) {
+                    d.insertString(d.getLength(), "You won, congratulations!\n", win);
+                } else {
+                    d.insertString(d.getLength(), "You lost, do better next time!\n", lose);
+                }
+            } catch (BadLocationException ex) {
+                ex.printStackTrace();
+            }
+        }
+        else if (msg.startsWith(Protocol.CHAT + ":")) {
+            // display only in‐game chat
+            String text = msg.substring((Protocol.CHAT + ":").length());
+            try {
+                StyledDocument d = chatArea.getStyledDocument();
+                Style s = d.getStyle(StyleContext.DEFAULT_STYLE);
+                d.insertString(d.getLength(), text + "\n", s);
+            } catch (BadLocationException ex) {
+                ex.printStackTrace();
+            }
         }
         else if (msg.startsWith(Protocol.END + ":")) {
-            int choice = JOptionPane.showConfirmDialog(
-                frame,
-                msg.substring((Protocol.END + ":").length()),
-                "Play again?",
-                JOptionPane.YES_NO_OPTION
-            );
-            network.sendMessage(choice == JOptionPane.YES_OPTION ? "yes" : "no");
+            String prompt = msg.substring((Protocol.END + ":").length());
+            int choice = JOptionPane.showConfirmDialog(frame, prompt,
+                "Play again?", JOptionPane.YES_NO_OPTION);
+            network.sendMessage(choice==JOptionPane.YES_OPTION?"yes":"no");
         }
         else if (msg.equals(Protocol.QUEUE_JOINED)) {
             statusLabel.setText("Waiting for opponent...");
             boardPanel.setInteractive(false);
             chatField.setEnabled(true);
         }
-
-        // ←–– ADD THESE TWO BLOCKS ––→
-
-        // FRIEND LIST
         else if (msg.startsWith(Protocol.FRIEND_LIST_RESPONSE + ":")) {
-            // parse "user1,on;user2,off;..."
             friendsPanel.updateFriendsList(
-                parseKeyBoolList(
-                    msg.substring((Protocol.FRIEND_LIST_RESPONSE + ":").length())
-                )
+                parseKeyBoolList(msg.substring((Protocol.FRIEND_LIST_RESPONSE + ":").length()))
             );
             cardLayout.show(mainPanel, "friends");
         }
@@ -296,24 +287,30 @@ public class ConnectFourClient {
         else if (msg.startsWith(Protocol.FRIEND_ADD_ERROR + ":")) {
             showError(msg.substring((Protocol.FRIEND_ADD_ERROR + ":").length()));
         }
-
-        // STATS
         else if (msg.startsWith(Protocol.STATS_RESPONSE + ":")) {
-            String[] parts = msg.substring(
-                (Protocol.STATS_RESPONSE + ":").length()
-            ).split(",");
-            int wins   = Integer.parseInt(parts[0]);
-            int losses = Integer.parseInt(parts[1]);
-            int draws  = Integer.parseInt(parts[2]);
-            statsPanel.updateStats(wins, losses, draws);
+            String[] parts = msg.substring((Protocol.STATS_RESPONSE + ":").length()).split(",");
+            statsPanel.updateStats(
+                Integer.parseInt(parts[0]),
+                Integer.parseInt(parts[1]),
+                Integer.parseInt(parts[2])
+            );
             cardLayout.show(mainPanel, "stats");
         }
-
-        // ←–– END ADDED BLOCKS ––→
-
         else if (msg.startsWith(Protocol.ERROR + ":")) {
             showError(msg.substring((Protocol.ERROR + ":").length()));
         }
+    }
+
+    // helper to parse "user,on;other,off;..."
+    private Map<String,Boolean> parseKeyBoolList(String data) {
+        Map<String,Boolean> m = new HashMap<>();
+        for (String e : data.split(";")) {
+            String[] kv = e.split(",");
+            if (kv.length == 2) {
+                m.put(kv[0], "on".equals(kv[1]));
+            }
+        }
+        return m;
     }
 
     private void showError(String m) {
@@ -321,18 +318,6 @@ public class ConnectFourClient {
     }
     private void showInfo(String m) {
         JOptionPane.showMessageDialog(frame, m, "Info", JOptionPane.INFORMATION_MESSAGE);
-    }
-
-    // parses strings like "alice,on;bob,off;carol,on" into a Map<username,online?>
-    private Map<String,Boolean> parseKeyBoolList(String data) {
-        Map<String,Boolean> m = new HashMap<>();
-        for (String entry : data.split(";")) {
-            String[] kv = entry.split(",");
-            if (kv.length == 2) {
-                m.put(kv[0], "on".equals(kv[1]));
-            }
-        }
-        return m;
     }
 
     public static void main(String[] args) {

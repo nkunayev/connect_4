@@ -1,22 +1,22 @@
 {
   "hqru" : {
-    "wins" : 8,
-    "losses" : 5,
+    "wins" : 11,
+    "losses" : 6,
     "draws" : 0
   },
   "hqru1" : {
-    "wins" : 3,
-    "losses" : 3,
+    "wins" : 4,
+    "losses" : 6,
     "draws" : 0
   },
   "oma" : {
-    "wins" : 63,
-    "losses" : 55,
+    "wins" : 72,
+    "losses" : 57,
     "draws" : 0
   },
   "oma1" : {
-    "wins" : 50,
-    "losses" : 61,
+    "wins" : 52,
+    "losses" : 70,
     "draws" : 0
   }
 }
