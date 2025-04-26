@@ -8,32 +8,23 @@ import java.util.HashMap;
 import java.util.Map;
 
 import common.Protocol;
-import client.chat.ChatClient;
-import client.GameBoard;
-import client.GameBoardPanel;
-import client.LoginPanel;
-import client.HomePanel;
-import client.FriendsPanel;
-import client.StatsPanel;
-import client.NetworkHandler;
-import client.AIPlayer;
 
 public class ConnectFourClient {
     private static final int ROWS = 6, COLS = 7;
 
-    private JFrame       frame;
-    private CardLayout   cardLayout;
-    private JPanel       mainPanel;
-    private LoginPanel   loginPanel;
-    private HomePanel    homePanel;
-    private FriendsPanel friendsPanel;
-    private StatsPanel   statsPanel;
-    private GameBoardPanel boardPanel;
-    private JTextPane    chatArea;
-    private JTextField   chatField;
-    private JLabel       statusLabel;
-    private NetworkHandler network;
-    private String       username;
+    private JFrame            frame;
+    private CardLayout        cardLayout;
+    private JPanel            mainPanel;
+    private LoginPanel        loginPanel;
+    private HomePanel         homePanel;
+    private FriendsPanel      friendsPanel;
+    private StatsPanel        statsPanel;
+    private GameBoardPanel    boardPanel;
+    private JTextPane         chatArea;
+    private JTextField        chatField;
+    private JLabel            statusLabel;
+    private NetworkHandler    network;
+    private String            username;
 
     // === AI fields ===
     private boolean singlePlayerMode = false;
@@ -139,17 +130,17 @@ public class ConnectFourClient {
                 cardLayout.show(mainPanel, "game");
             }
             @Override public void onViewFriends() {
+                friendsPanel.clearList();
                 network.sendMessage(Protocol.FRIEND_LIST_REQUEST);
-                cardLayout.show(mainPanel, "friends");
             }
             @Override public void onViewStats() {
+                statsPanel.clearStats();
                 network.sendMessage(Protocol.STATS_REQUEST);
-                cardLayout.show(mainPanel, "stats");
             }
         });
         mainPanel.add(homePanel, "home");
 
-        // --- Friends Screen ---
+        // --- FRIENDS SCREEN ---
         friendsPanel = new FriendsPanel(new FriendsPanel.FriendsListener() {
             @Override public void onAddFriend(String u) {
                 network.sendMessage(Protocol.FRIEND_ADD + ":" + u);
@@ -160,18 +151,31 @@ public class ConnectFourClient {
         });
         mainPanel.add(friendsPanel, "friends");
 
-        // --- Stats Screen ---
+        // --- STATS SCREEN ---
         statsPanel = new StatsPanel(() -> cardLayout.show(mainPanel, "home"));
         mainPanel.add(statsPanel, "stats");
 
-        // --- Game Screen ---
+        // --- GAME SCREEN ---
         JPanel gamePanel = new JPanel(new BorderLayout(10,10));
-        boardPanel = new GameBoardPanel(col -> handleMove(col));
+
+        // Leave‐game button
+        JButton leaveBtn = new JButton("Leave Game");
+        leaveBtn.addActionListener((ActionEvent e) -> {
+            if (singlePlayerMode) {
+                cardLayout.show(mainPanel, "home");
+            } else {
+                network.sendMessage(Protocol.LEAVE);
+            }
+        });
+        JPanel topBar = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        topBar.add(leaveBtn);
+        gamePanel.add(topBar, BorderLayout.NORTH);
+
+        boardPanel = new GameBoardPanel(this::handleMove);
         boardPanel.setInteractive(false);
         gamePanel.add(boardPanel, BorderLayout.CENTER);
 
-        chatArea = new JTextPane();
-        chatArea.setEditable(false);
+        chatArea = new JTextPane(); chatArea.setEditable(false);
         chatField = new JTextField();
         chatField.addActionListener(e -> {
             String txt = chatField.getText().trim();
@@ -180,7 +184,6 @@ public class ConnectFourClient {
                 chatField.setText("");
             }
         });
-
         JPanel chatPane = new JPanel(new BorderLayout(5,5));
         chatPane.setBorder(BorderFactory.createTitledBorder("Game Chat"));
         chatPane.add(new JScrollPane(chatArea), BorderLayout.CENTER);

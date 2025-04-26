@@ -1,7 +1,7 @@
 {
   "oma" : {
-    "wins" : 4,
-    "losses" : 0,
+    "wins" : 10,
+    "losses" : 7,
     "draws" : 0
   },
   "oma1" : {
@@ -10,8 +10,8 @@
     "draws" : 0
   },
   "hqru" : {
-    "wins" : 0,
-    "losses" : 2,
+    "wins" : 7,
+    "losses" : 8,
     "draws" : 0
   }
 }

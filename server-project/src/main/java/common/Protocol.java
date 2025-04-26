@@ -27,6 +27,7 @@ public final class Protocol {
     public static final String CHAT                 = "CHAT";
     public static final String GAMEOVER             = "GAMEOVER";
     public static final String END                  = "END";
+    public static final String LEAVE               = "LEAVE"; 
     public static final String PROMPT               = "PROMPT";
 
     // Friends
