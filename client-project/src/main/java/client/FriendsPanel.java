@@ -37,7 +37,11 @@ public class FriendsPanel extends JPanel {
     public void updateFriendsList(Map<String,Boolean> m) {
         listModel.clear();
         m.forEach((user, online) -> {
-            listModel.addElement(user + (online ? " (online)" : " (offline)"));
+            String statusText = online
+                ? "<font color='green'>online</font>"
+                : "<font color='red'>offline</font>";
+            String display = "<html>" + user + " (" + statusText + ")</html>";
+            listModel.addElement(display);
         });
     }
 }

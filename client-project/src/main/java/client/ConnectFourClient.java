@@ -1,5 +1,6 @@
 package client;
 
+// AI imports
 import javax.swing.*;
 import javax.swing.text.*;
 import java.awt.*;
@@ -10,9 +11,6 @@ import common.Protocol;
 import common.chat.Message;
 import client.NetworkHandler;
 import client.chat.ChatClient;
-
-// AI imports
-import javax.swing.Timer;
 import client.GameBoard;
 import client.AIPlayer;
 
@@ -109,7 +107,15 @@ public class ConnectFourClient {
                 }.execute();
             }
         });
-        mainPanel.add(loginPanel, "login");
+        
+        // --- ADD LOGO ABOVE LOGIN ---
+        // place your logo at src/main/resources/images/logo.png
+        ImageIcon logoIcon = new ImageIcon(getClass().getResource("/images/logo.png"));
+        JLabel logoLabel = new JLabel(logoIcon, SwingConstants.CENTER);
+        JPanel loginContainer = new JPanel(new BorderLayout());
+        loginContainer.add(logoLabel, BorderLayout.NORTH);
+        loginContainer.add(loginPanel, BorderLayout.CENTER);
+        mainPanel.add(loginContainer, "login");
 
         // --- Home Screen ---
         homePanel = new HomePanel(new HomePanel.HomeListener() {
