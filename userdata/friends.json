@@ -1,5 +1,5 @@
 {
-  "hqru" : [ "oma", "hqru1" ],
+  "hqru" : [ "oma", "oma1", "hqru1" ],
   "hqru1" : [ ],
   "oma" : [ "oma1", "hqru1", "hqru" ],
   "oma1" : [ "oma" ]

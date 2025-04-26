@@ -2,46 +2,72 @@ package client;
 
 import javax.swing.*;
 import java.awt.*;
+import java.awt.event.ActionEvent;
 import java.util.Map;
 
 /**
  * FriendsPanel: view/add friends.
  */
 public class FriendsPanel extends JPanel {
-    private DefaultListModel<String> listModel = new DefaultListModel<>();
+    private final DefaultListModel<String> listModel = new DefaultListModel<>();
+    private final JList<String>            friendsList;
+    private final JTextField               addField;
+    private final JButton                  addButton;
+    private final JButton                  backButton;
+    private final FriendsListener          listener;
 
     public interface FriendsListener {
         void onAddFriend(String username);
         void onBack();
     }
 
-    public FriendsPanel(FriendsListener l) {
+    public FriendsPanel(FriendsListener listener) {
+        this.listener = listener;
         setLayout(new BorderLayout(10,10));
-        JList<String> list = new JList<>(listModel);
-        list.setBorder(BorderFactory.createTitledBorder("Friends"));
-        add(new JScrollPane(list), BorderLayout.CENTER);
 
-        JPanel bottom = new JPanel(new FlowLayout());
-        JTextField field = new JTextField(12);
-        JButton add = new JButton("Add Friend");
-        add.addActionListener(e -> l.onAddFriend(field.getText().trim()));
-        JButton back = new JButton("Back");
-        back.addActionListener(e -> l.onBack());
+        // --- Title ---
+        JLabel title = new JLabel("Friends", SwingConstants.CENTER);
+        title.setFont(new Font("SansSerif", Font.BOLD, 18));
+        add(title, BorderLayout.NORTH);
 
-        bottom.add(field);
-        bottom.add(add);
-        bottom.add(back);
-        add(bottom, BorderLayout.SOUTH);
+        // --- The scrolling list ---
+        friendsList = new JList<>(listModel);
+        friendsList.setCellRenderer(new DefaultListCellRenderer());
+        add(new JScrollPane(friendsList), BorderLayout.CENTER);
+
+        // --- Input field + buttons ---
+        addField   = new JTextField(15);
+        addButton  = new JButton("Add Friend");
+        backButton = new JButton("Back");
+
+        JPanel south = new JPanel(new FlowLayout(FlowLayout.CENTER, 10, 10));
+        south.add(addField);
+        south.add(addButton);
+        south.add(backButton);
+        add(south, BorderLayout.SOUTH);
+
+        // --- Wire up the buttons ---
+        addButton.addActionListener((ActionEvent e) -> {
+            String user = addField.getText().trim();
+            if (!user.isEmpty()) {
+                listener.onAddFriend(user);
+                addField.setText("");
+            }
+        });
+        backButton.addActionListener((ActionEvent e) -> listener.onBack());
     }
 
+    /**
+     * Populate the list with the given map of username→online-status.
+     * Expects values true=online, false=offline.
+     */
     public void updateFriendsList(Map<String,Boolean> m) {
         listModel.clear();
         m.forEach((user, online) -> {
-            String statusText = online
-                ? "<font color='green'>online</font>"
-                : "<font color='red'>offline</font>";
-            String display = "<html>" + user + " (" + statusText + ")</html>";
-            listModel.addElement(display);
+            String status = online
+                ? "<font color='green'>(online)</font>"
+                : "<font color='red'>(offline)</font>";
+            listModel.addElement("<html>" + user + " " + status + "</html>");
         });
     }
 }

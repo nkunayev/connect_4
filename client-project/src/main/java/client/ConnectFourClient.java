@@ -1,18 +1,16 @@
 package client;
 
-// AI imports
 import javax.swing.*;
 import javax.swing.text.*;
 import java.awt.*;
+import java.awt.image.BufferedImage;
+import java.io.File;
+import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
+import javax.imageio.ImageIO;
 
 import common.Protocol;
-import common.chat.Message;
-import client.NetworkHandler;
-import client.chat.ChatClient;
-import client.GameBoard;
-import client.AIPlayer;
 
 public class ConnectFourClient {
     private static final int ROWS = 6, COLS = 7;
@@ -57,7 +55,16 @@ public class ConnectFourClient {
         cardLayout = new CardLayout();
         mainPanel  = new JPanel(cardLayout);
 
-        // --- Login Screen ---
+        // --- load your logo if you still need it ---
+        ImageIcon logoIcon = null;
+        try {
+            BufferedImage img = ImageIO.read(new File("images/logo.png"));
+            logoIcon = new ImageIcon(img);
+        } catch (IOException ex) {
+            System.err.println("⚠️ Could not load images/logo.png: " + ex.getMessage());
+        }
+
+        // --- LOGIN SCREEN ---
         loginPanel = new LoginPanel(new LoginPanel.LoginListener() {
             @Override public void onLogin(String u, String p) {
                 username = u;
@@ -107,33 +114,35 @@ public class ConnectFourClient {
                 }.execute();
             }
         });
-        
-        // --- ADD LOGO ABOVE LOGIN ---
-        // place your logo at src/main/resources/images/logo.png
-        ImageIcon logoIcon = new ImageIcon(getClass().getResource("/images/logo.png"));
-        JLabel logoLabel = new JLabel(logoIcon, SwingConstants.CENTER);
-        JPanel loginContainer = new JPanel(new BorderLayout());
-        loginContainer.add(logoLabel, BorderLayout.NORTH);
-        loginContainer.add(loginPanel, BorderLayout.CENTER);
+        // wrap login + logo
+        JPanel loginContainer = new JPanel();
+        loginContainer.setLayout(new BoxLayout(loginContainer, BoxLayout.Y_AXIS));
+        loginContainer.add(Box.createVerticalStrut(20));
+        if (logoIcon != null) {
+            JLabel L = new JLabel(logoIcon);
+            L.setAlignmentX(Component.CENTER_ALIGNMENT);
+            loginContainer.add(L);
+            loginContainer.add(Box.createVerticalStrut(10));
+        }
+        loginPanel.setAlignmentX(Component.CENTER_ALIGNMENT);
+        loginContainer.add(loginPanel);
+        loginContainer.add(Box.createVerticalGlue());
         mainPanel.add(loginContainer, "login");
 
-        // --- Home Screen ---
+        // --- HOME SCREEN ---
         homePanel = new HomePanel(new HomePanel.HomeListener() {
             @Override public void onPlayOnline() {
-                singlePlayerMode = false;
-                gameOver = false;
+                singlePlayerMode = false; gameOver = false;
                 boardPanel.updateBoard(emptyBoardString());
                 chatArea.setText("");
                 statusLabel.setText("Waiting for opponent...");
                 boardPanel.setInteractive(false);
                 chatField.setEnabled(true);
-
                 network.sendMessage(Protocol.JOIN_QUEUE);
                 cardLayout.show(mainPanel, "game");
             }
             @Override public void onSinglePlayer() {
-                singlePlayerMode = true;
-                gameOver = false;
+                singlePlayerMode = true; gameOver = false;
                 localBoard = new GameBoard();
                 ai         = new AIPlayer(2, 5);
                 boardPanel.updateBoard(localBoard.serialize());
@@ -151,9 +160,22 @@ public class ConnectFourClient {
                 cardLayout.show(mainPanel, "stats");
             }
         });
-        mainPanel.add(homePanel, "home");
+        // wrap home + logo
+        JPanel homeContainer = new JPanel();
+        homeContainer.setLayout(new BoxLayout(homeContainer, BoxLayout.Y_AXIS));
+        homeContainer.add(Box.createVerticalStrut(20));
+        if (logoIcon != null) {
+            JLabel L = new JLabel(logoIcon);
+            L.setAlignmentX(Component.CENTER_ALIGNMENT);
+            homeContainer.add(L);
+            homeContainer.add(Box.createVerticalStrut(10));
+        }
+        homePanel.setAlignmentX(Component.CENTER_ALIGNMENT);
+        homeContainer.add(homePanel);
+        homeContainer.add(Box.createVerticalGlue());
+        mainPanel.add(homeContainer, "home");
 
-        // --- Friends Screen ---
+        // --- FRIENDS SCREEN ---
         friendsPanel = new FriendsPanel(new FriendsPanel.FriendsListener() {
             @Override public void onAddFriend(String u) {
                 network.sendMessage(Protocol.FRIEND_ADD + ":" + u);
@@ -164,67 +186,17 @@ public class ConnectFourClient {
         });
         mainPanel.add(friendsPanel, "friends");
 
-        // --- Stats Screen ---
+        // --- STATS SCREEN ---
         statsPanel = new StatsPanel(() -> cardLayout.show(mainPanel, "home"));
         mainPanel.add(statsPanel, "stats");
 
-        // --- Game Screen ---
+        // --- GAME SCREEN ---
         JPanel gamePane = new JPanel(new BorderLayout(10,10));
-        boardPanel = new GameBoardPanel(col -> {
-            if (singlePlayerMode) {
-                if (gameOver) return;
-                // human move
-                int row = localBoard.dropToken(col, 1);
-                if (row < 0) return;
-                boardPanel.updateBoard(localBoard.serialize());
-                if (localBoard.checkWin(1)) {
-                    statusLabel.setText("You win!");
-                    boardPanel.setInteractive(false);
-                    gameOver = true;
-                    promptAiReplay();
-                    return;
-                }
-                if (localBoard.isFull()) {
-                    statusLabel.setText("Draw!");
-                    boardPanel.setInteractive(false);
-                    gameOver = true;
-                    promptAiReplay();
-                    return;
-                }
-                // AI move
-                statusLabel.setText("AI is thinking...");
-                boardPanel.setInteractive(false);
-                Timer t = new Timer(300, e -> {
-                    int aiCol = ai.chooseColumn(localBoard);
-                    localBoard.dropToken(aiCol, 2);
-                    boardPanel.updateBoard(localBoard.serialize());
-                    if (localBoard.checkWin(2)) {
-                        statusLabel.setText("AI wins!");
-                        boardPanel.setInteractive(false);
-                        gameOver = true;
-                        promptAiReplay();
-                    } else if (localBoard.isFull()) {
-                        statusLabel.setText("Draw!");
-                        boardPanel.setInteractive(false);
-                        gameOver = true;
-                        promptAiReplay();
-                    } else {
-                        statusLabel.setText("Your turn");
-                        boardPanel.setInteractive(true);
-                    }
-                });
-                t.setRepeats(false);
-                t.start();
-            } else {
-                network.sendMessage(Protocol.MOVE + ":" + col);
-            }
-        });
+        boardPanel = new GameBoardPanel(this::handleMove);
         boardPanel.setInteractive(false);
         gamePane.add(boardPanel, BorderLayout.CENTER);
 
-        chatArea = new JTextPane();
-        chatArea.setEditable(false);
-
+        chatArea = new JTextPane(); chatArea.setEditable(false);
         chatField = new JTextField();
         chatField.addActionListener(e -> {
             String txt = chatField.getText().trim();
@@ -233,7 +205,6 @@ public class ConnectFourClient {
                 chatField.setText("");
             }
         });
-
         JPanel chatPane = new JPanel(new BorderLayout(5,5));
         chatPane.setBorder(BorderFactory.createTitledBorder("Game Chat"));
         chatPane.add(new JScrollPane(chatArea), BorderLayout.CENTER);
@@ -253,9 +224,46 @@ public class ConnectFourClient {
         cardLayout.show(mainPanel, "login");
     }
 
+    private void handleMove(int col) {
+        if (singlePlayerMode) {
+            if (gameOver) return;
+            int row = localBoard.dropToken(col, 1);
+            if (row < 0) return;
+            boardPanel.updateBoard(localBoard.serialize());
+            if (localBoard.checkWin(1)) {
+                statusLabel.setText("You win!"); boardPanel.setInteractive(false);
+                gameOver = true; promptAiReplay(); return;
+            }
+            if (localBoard.isFull()) {
+                statusLabel.setText("Draw!"); boardPanel.setInteractive(false);
+                gameOver = true; promptAiReplay(); return;
+            }
+            statusLabel.setText("AI is thinking...");
+            boardPanel.setInteractive(false);
+            new Timer(300, e -> aiMove()).start();
+        } else {
+            network.sendMessage(Protocol.MOVE + ":" + col);
+        }
+    }
+
+    private void aiMove() {
+        int aiCol = ai.chooseColumn(localBoard);
+        localBoard.dropToken(aiCol, 2);
+        boardPanel.updateBoard(localBoard.serialize());
+        if (localBoard.checkWin(2)) {
+            statusLabel.setText("AI wins!"); boardPanel.setInteractive(false);
+            gameOver = true; promptAiReplay();
+        } else if (localBoard.isFull()) {
+            statusLabel.setText("Draw!"); boardPanel.setInteractive(false);
+            gameOver = true; promptAiReplay();
+        } else {
+            statusLabel.setText("Your turn"); boardPanel.setInteractive(true);
+        }
+    }
+
     private void promptAiReplay() {
-        String prompt = "Play again? (yes/no)";
-        int choice = JOptionPane.showConfirmDialog(frame, prompt, "Play Again?", JOptionPane.YES_NO_OPTION);
+        int choice = JOptionPane.showConfirmDialog(
+            frame, "Play again?", "Replay", JOptionPane.YES_NO_OPTION);
         if (choice == JOptionPane.YES_OPTION) {
             localBoard = new GameBoard();
             boardPanel.updateBoard(localBoard.serialize());
@@ -285,7 +293,7 @@ public class ConnectFourClient {
             try {
                 String line;
                 while ((line = network.readMessage()) != null) {
-                    final String msg = line;
+                    String msg = line;
                     SwingUtilities.invokeLater(() -> handleMessage(msg));
                 }
             } catch (Exception e) {
@@ -295,16 +303,12 @@ public class ConnectFourClient {
     }
 
     private void handleMessage(String msg) {
-        System.out.println("CLIENT ← " + msg);
-
         if (msg.startsWith(Protocol.BOARD + ":")) {
             boardPanel.updateBoard(msg.substring((Protocol.BOARD + ":").length()));
-        }
-        else if (msg.equals(Protocol.YOUR_TURN)) {
+        } else if (msg.equals(Protocol.YOUR_TURN)) {
             statusLabel.setText("Your turn! Click a column.");
             boardPanel.setInteractive(true);
-        }
-        else if (msg.startsWith(Protocol.STATUS + ":")) {
+        } else if (msg.startsWith(Protocol.STATUS + ":")) {
             String t = msg.substring((Protocol.STATUS + ":").length());
             statusLabel.setText(t);
             boardPanel.setInteractive(false);
@@ -314,33 +318,36 @@ public class ConnectFourClient {
                 chatField.setEnabled(false);
                 cardLayout.show(mainPanel, "home");
             }
-        }
-        else if (msg.startsWith(Protocol.GAME_START + ":")) {
+        } else if (msg.startsWith(Protocol.GAME_START + ":")) {
             statusLabel.setText(msg.substring((Protocol.GAME_START + ":").length()));
             boardPanel.setInteractive(true);
             gameOver = false;
-        }
-        else if (msg.startsWith(Protocol.GAMEOVER + ":")) {
+        } else if (msg.startsWith(Protocol.GAMEOVER + ":")) {
             String r = msg.substring((Protocol.GAMEOVER + ":").length());
             statusLabel.setText(r);
             boardPanel.setInteractive(false);
             StyledDocument d = chatArea.getStyledDocument();
             Style win  = d.getStyle("WIN");
-            if (win == null) { win = d.addStyle("WIN", null); StyleConstants.setForeground(win, Color.GREEN.darker()); }
+            if (win == null) {
+                win = d.addStyle("WIN", null);
+                StyleConstants.setForeground(win, Color.GREEN.darker());
+            }
             Style lose = d.getStyle("LOSE");
-            if (lose == null){ lose = d.addStyle("LOSE", null); StyleConstants.setForeground(lose, Color.RED.darker()); }
+            if (lose == null) {
+                lose = d.addStyle("LOSE", null);
+                StyleConstants.setForeground(lose, Color.RED.darker());
+            }
             try {
                 String winner = r.split(" ")[0];
                 if (winner.equals(username)) {
-                    d.insertString(d.getLength(), "You won, congratulations!\n", win);
+                    d.insertString(d.getLength(), "You won! Congratulations!\n", win);
                 } else {
-                    d.insertString(d.getLength(), "You lost, do better next time!\n", lose);
+                    d.insertString(d.getLength(), "You lost! Better luck next time.\n", lose);
                 }
             } catch (BadLocationException ex) {
                 ex.printStackTrace();
             }
-        }
-        else if (msg.startsWith(Protocol.CHAT + ":")) {
+        } else if (msg.startsWith(Protocol.CHAT + ":")) {
             String text = msg.substring((Protocol.CHAT + ":").length());
             try {
                 StyledDocument d = chatArea.getStyledDocument();
@@ -349,31 +356,18 @@ public class ConnectFourClient {
             } catch (BadLocationException ex) {
                 ex.printStackTrace();
             }
-        }
-        else if (msg.startsWith(Protocol.END + ":")) {
-            String prompt = msg.substring((Protocol.END + ":").length());
-            int choice = JOptionPane.showConfirmDialog(frame, prompt,
-                "Play again?", JOptionPane.YES_NO_OPTION);
-            network.sendMessage(choice==JOptionPane.YES_OPTION?"yes":"no");
-        }
-        else if (msg.equals(Protocol.QUEUE_JOINED)) {
-            statusLabel.setText("Waiting for opponent...");
-            boardPanel.setInteractive(false);
-            chatField.setEnabled(true);
-        }
-        else if (msg.startsWith(Protocol.FRIEND_LIST_RESPONSE + ":")) {
+        } else if (msg.startsWith(Protocol.FRIEND_LIST_RESPONSE + ":")) {
             friendsPanel.updateFriendsList(
                 parseKeyBoolList(msg.substring((Protocol.FRIEND_LIST_RESPONSE + ":").length()))
             );
             cardLayout.show(mainPanel, "friends");
-        }
-        else if (msg.equals(Protocol.FRIEND_ADD_SUCCESS)) {
+        } else if (msg.equals(Protocol.FRIEND_ADD_SUCCESS)) {
             showInfo("Friend added successfully.");
-        }
-        else if (msg.startsWith(Protocol.FRIEND_ADD_ERROR + ":")) {
+            // 🔄 immediately refresh the list:
+            network.sendMessage(Protocol.FRIEND_LIST_REQUEST);
+        } else if (msg.startsWith(Protocol.FRIEND_ADD_ERROR + ":")) {
             showError(msg.substring((Protocol.FRIEND_ADD_ERROR + ":").length()));
-        }
-        else if (msg.startsWith(Protocol.STATS_RESPONSE + ":")) {
+        } else if (msg.startsWith(Protocol.STATS_RESPONSE + ":")) {
             String[] parts = msg.substring((Protocol.STATS_RESPONSE + ":").length()).split(",");
             statsPanel.updateStats(
                 Integer.parseInt(parts[0]),
@@ -381,8 +375,16 @@ public class ConnectFourClient {
                 Integer.parseInt(parts[2])
             );
             cardLayout.show(mainPanel, "stats");
-        }
-        else if (msg.startsWith(Protocol.ERROR + ":")) {
+        } else if (msg.startsWith(Protocol.END + ":")) {
+            String prompt = msg.substring((Protocol.END + ":").length());
+            int choice = JOptionPane.showConfirmDialog(frame, prompt,
+                "Play again?", JOptionPane.YES_NO_OPTION);
+            network.sendMessage(choice == JOptionPane.YES_OPTION ? "yes" : "no");
+        } else if (msg.equals(Protocol.QUEUE_JOINED)) {
+            statusLabel.setText("Waiting for opponent...");
+            boardPanel.setInteractive(false);
+            chatField.setEnabled(true);
+        } else if (msg.startsWith(Protocol.ERROR + ":")) {
             showError(msg.substring((Protocol.ERROR + ":").length()));
         }
     }
@@ -391,7 +393,9 @@ public class ConnectFourClient {
         Map<String,Boolean> m = new HashMap<>();
         for (String e : data.split(";")) {
             String[] kv = e.split(",");
-            if (kv.length == 2) m.put(kv[0], "on".equals(kv[1]));
+            if (kv.length == 2) {
+                m.put(kv[0], "on".equals(kv[1]));
+            }
         }
         return m;
     }
