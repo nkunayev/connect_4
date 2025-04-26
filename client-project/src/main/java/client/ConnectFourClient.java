@@ -57,6 +57,11 @@ public class ConnectFourClient {
         cardLayout = new CardLayout();
         mainPanel  = new JPanel(cardLayout);
 
+        // Load your logo from resources
+        ImageIcon logoIcon = new ImageIcon(
+            getClass().getResource("/images/logo.png")
+        );
+
         // --- Login Screen ---
         loginPanel = new LoginPanel(new LoginPanel.LoginListener() {
             @Override public void onLogin(String u, String p) {
@@ -108,14 +113,15 @@ public class ConnectFourClient {
             }
         });
         
-        // --- ADD LOGO ABOVE LOGIN ---
-        // place your logo at src/main/resources/images/logo.png
-        ImageIcon logoIcon = new ImageIcon(getClass().getResource("/images/logo.png"));
-        JLabel logoLabel = new JLabel(logoIcon, SwingConstants.CENTER);
+        
+        JLabel loginLogo = new JLabel(logoIcon, SwingConstants.CENTER);
+        // push it down 40px from the very top, and add 20px below
+        loginLogo.setBorder(BorderFactory.createEmptyBorder(100, 0, 10, 0));
+
         JPanel loginContainer = new JPanel(new BorderLayout());
-        loginContainer.add(logoLabel, BorderLayout.NORTH);
+        loginContainer.add(loginLogo,  BorderLayout.NORTH);
         loginContainer.add(loginPanel, BorderLayout.CENTER);
-        mainPanel.add(loginContainer, "login");
+        mainPanel.add(loginContainer,  "login");
 
         // --- Home Screen ---
         homePanel = new HomePanel(new HomePanel.HomeListener() {
@@ -151,7 +157,13 @@ public class ConnectFourClient {
                 cardLayout.show(mainPanel, "stats");
             }
         });
-        mainPanel.add(homePanel, "home");
+        JLabel homeLogo = new JLabel(logoIcon, SwingConstants.CENTER);
+        homeLogo.setBorder(BorderFactory.createEmptyBorder(100, 0, 10, 0));
+
+        JPanel homeContainer = new JPanel(new BorderLayout());
+        homeContainer.add(homeLogo,  BorderLayout.NORTH);
+        homeContainer.add(homePanel, BorderLayout.CENTER);
+        mainPanel.add(homeContainer,  "home");
 
         // --- Friends Screen ---
         friendsPanel = new FriendsPanel(new FriendsPanel.FriendsListener() {
