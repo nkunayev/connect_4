@@ -6,15 +6,12 @@
 
   <modelVersion>4.0.0</modelVersion>
 
-  <parent>
-    <groupId>CS342Spring2025</groupId>
-    <artifactId>project3-parent</artifactId>
-    <version>0.0.1-SNAPSHOT</version>
-    <relativePath>../pom.xml</relativePath>
-  </parent>
-
+  <!-- Remove the <parent> section entirely! -->
+  <groupId>CS342Spring2025</groupId>
   <artifactId>server-project</artifactId>
+  <version>0.0.1-SNAPSHOT</version>
   <name>ConnectFour Server</name>
+  <packaging>jar</packaging>
 
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -23,12 +20,6 @@
   </properties>
 
   <dependencies>
-    <!-- Shared protocol and chat types -->
-    <dependency>
-      <groupId>CS342Spring2025</groupId>
-      <artifactId>common</artifactId>
-      <version>0.0.1-SNAPSHOT</version>
-    </dependency>
     <!-- Jackson for JSON persistence -->
     <dependency>
       <groupId>com.fasterxml.jackson.core</groupId>
@@ -46,6 +37,7 @@
 
   <build>
     <plugins>
+      <!-- compile with Java 11 -->
       <plugin>
         <artifactId>maven-compiler-plugin</artifactId>
         <version>3.8.1</version>
@@ -53,7 +45,13 @@
           <release>11</release>
         </configuration>
       </plugin>
+
+      <!-- exec plugin so you can do: mvn exec:java -Dexec.mainClass=server.GameServer -->
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>exec-maven-plugin</artifactId>
+        <version>3.1.0</version>
+      </plugin>
     </plugins>
   </build>
-
 </project>

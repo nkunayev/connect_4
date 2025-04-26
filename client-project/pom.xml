@@ -6,14 +6,11 @@
 
   <modelVersion>4.0.0</modelVersion>
 
-  <parent>
-    <groupId>CS342Spring2025</groupId>
-    <artifactId>project3-parent</artifactId>
-    <version>0.0.1-SNAPSHOT</version>
-    <relativePath>../pom.xml</relativePath>
-  </parent>
-
+  <!-- No parent—this is a standalone Maven project -->
+  <groupId>CS342Spring2025</groupId>
   <artifactId>client-project</artifactId>
+  <version>0.0.1-SNAPSHOT</version>
+  <packaging>jar</packaging>
   <name>ConnectFour Client</name>
 
   <properties>
@@ -23,23 +20,29 @@
   </properties>
 
   <dependencies>
-    <!-- Shared Protocol & Chat Types -->
-    <dependency>
-      <groupId>CS342Spring2025</groupId>
-      <artifactId>common</artifactId>
-      <version>0.0.1-SNAPSHOT</version>
-    </dependency>
-    <!-- (any other dependencies you need) -->
+    <!-- 
+      No external dependencies here. 
+      Your `common` classes should be copied into src/main/java/common/,
+      so you do NOT need a <dependency> on common.
+    -->
   </dependencies>
 
   <build>
     <plugins>
+      <!-- Compile with Java 11 -->
       <plugin>
         <artifactId>maven-compiler-plugin</artifactId>
         <version>3.8.1</version>
         <configuration>
           <release>11</release>
         </configuration>
+      </plugin>
+
+      <!-- Allows: mvn exec:java -Dexec.mainClass="client.ConnectFourClient" -Dexec.args="127.0.0.1 12345" -->
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>exec-maven-plugin</artifactId>
+        <version>3.1.0</version>
       </plugin>
     </plugins>
   </build>

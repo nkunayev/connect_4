@@ -1,9 +1,10 @@
 package client.chat;
 
-import common.chat.Message;
 import java.io.*;
 import java.net.*;
 import java.util.function.Consumer;
+
+import common.Message;
 
 /**
  * ChatClient: connects to ChatServer, reads Message objects,

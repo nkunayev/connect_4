@@ -1,7 +1,8 @@
 package server.chat;
 
-import common.chat.Message;
-import common.chat.MessageType;
+import common.Message;
+import common.MessageType;
+
 import java.io.*;
 import java.net.*;
 import java.util.*;

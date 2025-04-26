@@ -55,14 +55,9 @@ public class ConnectFourClient {
         cardLayout = new CardLayout();
         mainPanel  = new JPanel(cardLayout);
 
-        // --- load your logo if you still need it ---
-        ImageIcon logoIcon = null;
-        try {
-            BufferedImage img = ImageIO.read(new File("images/logo.png"));
-            logoIcon = new ImageIcon(img);
-        } catch (IOException ex) {
-            System.err.println("⚠️ Could not load images/logo.png: " + ex.getMessage());
-        }
+        ImageIcon logoIcon = new ImageIcon(getClass().getResource("/images/logo.png"));
+
+        
 
         // --- LOGIN SCREEN ---
         loginPanel = new LoginPanel(new LoginPanel.LoginListener() {
@@ -115,19 +110,14 @@ public class ConnectFourClient {
             }
         });
         // wrap login + logo
-        JPanel loginContainer = new JPanel();
-        loginContainer.setLayout(new BoxLayout(loginContainer, BoxLayout.Y_AXIS));
-        loginContainer.add(Box.createVerticalStrut(20));
-        if (logoIcon != null) {
-            JLabel L = new JLabel(logoIcon);
-            L.setAlignmentX(Component.CENTER_ALIGNMENT);
-            loginContainer.add(L);
-            loginContainer.add(Box.createVerticalStrut(10));
-        }
-        loginPanel.setAlignmentX(Component.CENTER_ALIGNMENT);
-        loginContainer.add(loginPanel);
-        loginContainer.add(Box.createVerticalGlue());
-        mainPanel.add(loginContainer, "login");
+        JLabel loginLogo = new JLabel(logoIcon, SwingConstants.CENTER);
+        // push it down 40px from the very top, and add 20px below
+        loginLogo.setBorder(BorderFactory.createEmptyBorder(100, 0, 10, 0));
+
+        JPanel loginContainer = new JPanel(new BorderLayout());
+        loginContainer.add(loginLogo,  BorderLayout.NORTH);
+        loginContainer.add(loginPanel, BorderLayout.CENTER);
+        mainPanel.add(loginContainer,  "login");
 
         // --- HOME SCREEN ---
         homePanel = new HomePanel(new HomePanel.HomeListener() {
@@ -161,19 +151,13 @@ public class ConnectFourClient {
             }
         });
         // wrap home + logo
-        JPanel homeContainer = new JPanel();
-        homeContainer.setLayout(new BoxLayout(homeContainer, BoxLayout.Y_AXIS));
-        homeContainer.add(Box.createVerticalStrut(20));
-        if (logoIcon != null) {
-            JLabel L = new JLabel(logoIcon);
-            L.setAlignmentX(Component.CENTER_ALIGNMENT);
-            homeContainer.add(L);
-            homeContainer.add(Box.createVerticalStrut(10));
-        }
-        homePanel.setAlignmentX(Component.CENTER_ALIGNMENT);
-        homeContainer.add(homePanel);
-        homeContainer.add(Box.createVerticalGlue());
-        mainPanel.add(homeContainer, "home");
+        JLabel homeLogo = new JLabel(logoIcon, SwingConstants.CENTER);
+        homeLogo.setBorder(BorderFactory.createEmptyBorder(100, 0, 10, 0));
+
+        JPanel homeContainer = new JPanel(new BorderLayout());
+        homeContainer.add(homeLogo,  BorderLayout.NORTH);
+        homeContainer.add(homePanel, BorderLayout.CENTER);
+        mainPanel.add(homeContainer,  "home");
 
         // --- FRIENDS SCREEN ---
         friendsPanel = new FriendsPanel(new FriendsPanel.FriendsListener() {

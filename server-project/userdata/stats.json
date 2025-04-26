@@ -1,0 +1,12 @@
+{
+  "oma" : {
+    "wins" : 2,
+    "losses" : 0,
+    "draws" : 0
+  },
+  "oma1" : {
+    "wins" : 0,
+    "losses" : 2,
+    "draws" : 0
+  }
+}
