@@ -52,6 +52,8 @@ public class ConnectFourClient {
         cardLayout = new CardLayout();
         mainPanel  = new JPanel(cardLayout);
 
+        ImageIcon logoIcon = new ImageIcon(getClass().getResource("/images/logo.png"));
+
         // --- LOGIN SCREEN ---
         loginPanel = new LoginPanel(new LoginPanel.LoginListener() {
             @Override public void onLogin(String u, String p) {
@@ -102,7 +104,14 @@ public class ConnectFourClient {
                 }.execute();
             }
         });
-        mainPanel.add(loginPanel, "login");
+        // — LOGIN SCREEN  —
+        JLabel loginLogo = new JLabel(logoIcon, SwingConstants.CENTER);
+        loginLogo.setBorder(BorderFactory.createEmptyBorder(100, 0, 10, 0));
+
+        JPanel loginContainer = new JPanel(new BorderLayout());
+        loginContainer.add(loginLogo,  BorderLayout.NORTH);
+        loginContainer.add(loginPanel, BorderLayout.CENTER);
+        mainPanel.add(loginContainer,  "login");
 
         // --- HOME SCREEN ---
         homePanel = new HomePanel(new HomePanel.HomeListener() {
@@ -138,7 +147,13 @@ public class ConnectFourClient {
                 network.sendMessage(Protocol.STATS_REQUEST);
             }
         });
-        mainPanel.add(homePanel, "home");
+        JLabel homeLogo = new JLabel(logoIcon, SwingConstants.CENTER);
+        homeLogo.setBorder(BorderFactory.createEmptyBorder(100, 0, 10, 0));
+
+        JPanel homeContainer = new JPanel(new BorderLayout());
+        homeContainer.add(homeLogo,  BorderLayout.NORTH);
+        homeContainer.add(homePanel, BorderLayout.CENTER);
+        mainPanel.add(homeContainer,  "home");
 
         // --- FRIENDS SCREEN ---
         friendsPanel = new FriendsPanel(new FriendsPanel.FriendsListener() {

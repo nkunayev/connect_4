@@ -13,7 +13,6 @@ public class NetworkHandler {
 
     public NetworkHandler(String serverIP, int port) throws IOException {
         socket = new Socket(serverIP, port);
-        // removed socket.setSoTimeout(...)
         in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
         out = new PrintWriter(new BufferedWriter(new OutputStreamWriter(socket.getOutputStream())), true);
     }
